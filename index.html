@@ -64,6 +64,20 @@
     padding: 8px 10px;
   }
 
+  #tabs { display: flex; gap: 8px; }
+  .tab {
+    border: 1px solid var(--tile-border);
+    background: transparent;
+    color: var(--muted);
+    font-weight: 800;
+    font-size: .75rem;
+    letter-spacing: 2px;
+    padding: 7px 18px;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
   #board { display: grid; grid-template-rows: repeat(5, 1fr); gap: 6px; }
   .row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
   .tile {
@@ -159,17 +173,19 @@
   .card h2 { font-size: 1.6rem; margin-bottom: 6px; }
   .card .word { font-size: 2rem; font-weight: 800; letter-spacing: 6px; color: var(--accent); margin: 8px 0; text-transform: uppercase; }
   .card p { color: var(--muted); margin-bottom: 18px; font-size: .9rem; }
+  .card .btnrow { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
   .card button {
     background: var(--accent);
     border: none;
     color: #fff;
     font-size: 1rem;
     font-weight: 800;
-    padding: 12px 28px;
+    padding: 12px 22px;
     border-radius: 10px;
     cursor: pointer;
     letter-spacing: 1px;
   }
+  .card button.ghost { background: var(--key); }
   .card button:active { transform: scale(.96); }
 
   .confetti {
@@ -196,6 +212,10 @@
 </header>
 
 <main>
+  <div id="tabs">
+    <button class="tab active" data-mode="daily">DAILY</button>
+    <button class="tab" data-mode="endless">ENDLESS</button>
+  </div>
   <div id="board"></div>
   <div id="keyboard"></div>
 </main>
@@ -207,7 +227,10 @@
     <h2 id="ov-title"></h2>
     <div class="word" id="ov-word"></div>
     <p id="ov-sub"></p>
-    <button id="ov-btn">BLURT AGAIN</button>
+    <div class="btnrow">
+      <button id="ov-share">SHARE 📣</button>
+      <button id="ov-btn" class="ghost">BLURT AGAIN</button>
+    </div>
   </div>
 </div>
 
@@ -228,15 +251,43 @@
   const toast = document.getElementById("toast");
   const overlay = document.getElementById("overlay");
 
-  let answer, row, col, grid, done;
-  let stats = { streak: 0, best: 0, solved: 0 };
-  try { stats = Object.assign(stats, JSON.parse(localStorage.getItem("blurt-stats") || "{}")); } catch (e) {}
+  let answer, row, col, grid, done, mode = "daily";
+  let rowScores = []; // [{word, states}] for the current round — feeds the share grid
+
+  function load(key, fallback) {
+    try { return Object.assign(fallback, JSON.parse(localStorage.getItem(key) || "{}")); } catch (e) { return fallback; }
+  }
+  const stats = load("blurt-stats", { streak: 0, best: 0, solved: 0 });
+  const daily = load("blurt-daily", { streak: 0, best: 0, solved: 0, lastWinDay: 0, lastResult: null });
 
   function saveStats() {
-    try { localStorage.setItem("blurt-stats", JSON.stringify(stats)); } catch (e) {}
-    document.getElementById("streak").textContent = stats.streak;
-    document.getElementById("best").textContent = stats.best;
-    document.getElementById("solved").textContent = stats.solved;
+    try {
+      localStorage.setItem("blurt-stats", JSON.stringify(stats));
+      localStorage.setItem("blurt-daily", JSON.stringify(daily));
+    } catch (e) {}
+    const s = mode === "daily" ? daily : stats;
+    document.getElementById("streak").textContent = s.streak;
+    document.getElementById("best").textContent = s.best;
+    document.getElementById("solved").textContent = s.solved;
+  }
+
+  // ----- Daily word: same word for everyone on the same calendar day -----
+  const EPOCH = Date.UTC(2026, 0, 1); // Daily #1
+  function todayNum() {
+    const d = new Date();
+    return Math.round((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - EPOCH) / 864e5) + 1;
+  }
+  function dailyWord(n) {
+    let a = n * 7919 + 0x9e3779b9 | 0; // seeded PRNG (mulberry32) so every device agrees
+    a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return WORDS[Math.floor(((t ^ t >>> 14) >>> 0) / 4294967296 * WORDS.length)];
+  }
+  function nextDailyIn() {
+    const d = new Date();
+    const ms = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1) - d;
+    return `${Math.floor(ms / 36e5)}h ${Math.floor(ms % 36e5 / 6e4)}m`;
   }
 
   function buildBoard() {
@@ -271,12 +322,38 @@
   }
 
   function newRound() {
-    answer = WORDS[Math.floor(Math.random() * WORDS.length)];
     row = 0; col = 0; done = false;
+    rowScores = [];
     grid = Array.from({ length: ROWS }, () => Array(COLS).fill(""));
     buildBoard();
     buildKeyboard();
     overlay.classList.remove("show");
+    saveStats();
+
+    if (mode === "daily") {
+      const today = todayNum();
+      answer = dailyWord(today);
+      const last = daily.lastResult;
+      if (last && last.day === today) return restoreDaily(last); // one shot per day
+    } else {
+      answer = WORDS[Math.floor(Math.random() * WORDS.length)];
+    }
+  }
+
+  function restoreDaily(last) {
+    done = true;
+    rowScores = last.rows;
+    last.rows.forEach((r, ri) => {
+      for (let i = 0; i < COLS; i++) {
+        const t = tileAt(ri, i);
+        t.textContent = r.word[i];
+        t.classList.add("filled", r.states[i]);
+        paintKey(r.word[i], r.states[i]);
+      }
+    });
+    row = last.rows.length - 1;
+    endCard(last.won ? rankFor(last.rows.length) : "💀 BLURTED OUT", answer,
+      `Next word in ${nextDailyIn()} — flex this one while it lasts.`);
   }
 
   function tileAt(r, c) { return board.children[r].children[c]; }
@@ -355,6 +432,7 @@
 
     done = true; // lock input during reveal
     const result = score(guess);
+    rowScores.push({ word: guess, states: result });
     result.forEach((state, i) => {
       const t = tileAt(row, i);
       setTimeout(() => {
@@ -372,19 +450,38 @@
     }, COLS * 180 + 350);
   }
 
+  const RANKS = ["🔮 PSYCHIC!", "🧠 GENIUS!", "🔥 SHARP!", "😮‍💨 CLUTCH!", "😅 SURVIVED!"];
+  function rankFor(guesses) { return RANKS[guesses - 1]; }
+
   function win(rowEl) {
     rowEl.classList.add("bounce");
-    stats.streak++;
-    stats.solved++;
-    if (stats.streak > stats.best) stats.best = stats.streak;
+    if (mode === "daily") {
+      const today = todayNum();
+      daily.streak = daily.lastWinDay === today - 1 ? daily.streak + 1 : 1;
+      daily.lastWinDay = today;
+      daily.solved++;
+      if (daily.streak > daily.best) daily.best = daily.streak;
+      daily.lastResult = { day: today, won: true, rows: rowScores };
+    } else {
+      stats.streak++;
+      stats.solved++;
+      if (stats.streak > stats.best) stats.best = stats.streak;
+    }
     saveStats();
     confetti();
-    const brags = ["GENIUS!", "BLURTED IT!", "ON FIRE!", "UNSTOPPABLE!", "TOO EASY?", "NAILED IT!"];
-    setTimeout(() => endCard(brags[Math.min(row, 2) === 0 ? 0 : Math.floor(Math.random() * brags.length)],
-      answer, `Streak: ${stats.streak} 🔥`), 700);
+    const sub = mode === "daily"
+      ? `Daily streak: ${daily.streak} 🔥 Now make everyone else feel slow.`
+      : `Streak: ${stats.streak} 🔥`;
+    setTimeout(() => endCard(rankFor(row + 1), answer, sub), 700);
   }
 
   function lose() {
+    if (mode === "daily") {
+      daily.streak = 0;
+      daily.lastResult = { day: todayNum(), won: false, rows: rowScores };
+      saveStats();
+      return endCard("💀 BLURTED OUT", answer, "Everyone will know. Unless you tell them first.");
+    }
     const lost = stats.streak;
     stats.streak = 0;
     saveStats();
@@ -395,7 +492,55 @@
     document.getElementById("ov-title").textContent = title;
     document.getElementById("ov-word").textContent = word;
     document.getElementById("ov-sub").textContent = sub;
+    document.getElementById("ov-btn").textContent =
+      mode === "daily" ? "PLAY ENDLESS" : "BLURT AGAIN";
     overlay.classList.add("show");
+  }
+
+  // ----- Share: spoiler-free emoji grid + rank + streak -----
+  const EMOJI = { hit: "🟩", close: "🟨", miss: "⬛" };
+  function shareText() {
+    const won = rowScores.length && rowScores[rowScores.length - 1].word === answer;
+    const grid = rowScores.map(r => r.states.map(s => EMOJI[s]).join("")).join("\n");
+    const lines = [];
+    if (mode === "daily") {
+      lines.push(`BLURT! Daily #${todayNum()} — ${won ? rowScores.length : "X"}/${ROWS} ${won ? rankFor(rowScores.length) : "💀"}`);
+      lines.push(grid);
+      if (won && daily.streak > 1) lines.push(`🔥 ${daily.streak}-day streak`);
+      lines.push(won ? "Beat that." : "Avenge me.");
+    } else {
+      lines.push(`BLURT! Endless — ${won ? rowScores.length : "X"}/${ROWS} ${won ? rankFor(rowScores.length) : "💀"}`);
+      lines.push(grid);
+      if (stats.streak > 1) lines.push(`🔥 streak: ${stats.streak}`);
+      lines.push("Think you're faster?");
+    }
+    if (/^https?:/.test(location.href)) lines.push(location.href.split(/[?#]/)[0]);
+    return lines.join("\n");
+  }
+
+  function share() {
+    const text = shareText();
+    if (navigator.share) {
+      navigator.share({ text }).catch(() => {});
+      return;
+    }
+    const copied = () => showToast("Copied! Go flex 💪");
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(copied, () => legacyCopy(text, copied));
+    } else {
+      legacyCopy(text, copied);
+    }
+  }
+
+  function legacyCopy(text, onDone) {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); onDone(); } catch (e) { showToast("Couldn't copy 😞"); }
+    ta.remove();
   }
 
   function confetti() {
@@ -412,11 +557,24 @@
     }
   }
 
-  document.getElementById("ov-btn").addEventListener("click", newRound);
+  function setMode(m) {
+    mode = m;
+    document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.mode === m));
+    newRound();
+  }
+
+  document.querySelectorAll(".tab").forEach(t =>
+    t.addEventListener("click", () => { if (t.dataset.mode !== mode) setMode(t.dataset.mode); }));
+
+  document.getElementById("ov-share").addEventListener("click", share);
+  document.getElementById("ov-btn").addEventListener("click", () => {
+    if (mode === "daily") setMode("endless"); // today's daily is done — keep them playing
+    else newRound();
+  });
 
   document.addEventListener("keydown", e => {
     if (overlay.classList.contains("show")) {
-      if (e.key === "Enter") newRound();
+      if (e.key === "Enter") document.getElementById("ov-btn").click();
       return;
     }
     if (e.key === "Enter") press("enter");
