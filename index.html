@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>BLURT! — blurt the word</title>
+<meta name="description" content="BLURT! A stupidly simple, highly addictive word game. Guess the 4-letter word in 5 tries. Keep the streak alive.">
+<style>
+  :root {
+    --bg: #12131a;
+    --bg2: #1b1d27;
+    --text: #f2f3f7;
+    --muted: #8b8fa3;
+    --tile-border: #3a3d4d;
+    --hit: #2bb673;      /* right letter, right spot */
+    --close: #e6a817;    /* right letter, wrong spot */
+    --miss: #2c2f3d;     /* not in word */
+    --accent: #ff5d8f;
+    --key: #444861;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Avenir Next", "Segoe UI", system-ui, -apple-system, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    user-select: none;
+    overflow: hidden;
+  }
+
+  header {
+    width: 100%;
+    max-width: 480px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--tile-border);
+  }
+  .logo {
+    font-size: 1.7rem;
+    font-weight: 800;
+    letter-spacing: 2px;
+    color: var(--accent);
+    text-shadow: 0 2px 0 rgba(0,0,0,.4);
+  }
+  .logo span { color: var(--text); }
+  .stats { display: flex; gap: 14px; text-align: center; }
+  .stat .num { font-size: 1.25rem; font-weight: 800; line-height: 1; }
+  .stat .lbl { font-size: .6rem; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); }
+  .stat .num.fire { color: var(--accent); }
+
+  main {
+    flex: 1;
+    width: 100%;
+    max-width: 480px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-evenly;
+    padding: 8px 10px;
+  }
+
+  #board { display: grid; grid-template-rows: repeat(5, 1fr); gap: 6px; }
+  .row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .tile {
+    width: min(15.5vw, 64px);
+    height: min(15.5vw, 64px);
+    border: 2px solid var(--tile-border);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: clamp(1.3rem, 7vw, 2rem);
+    font-weight: 800;
+    text-transform: uppercase;
+    background: transparent;
+    transition: transform .08s ease;
+  }
+  .tile.filled { border-color: var(--muted); animation: pop .09s ease; }
+  .tile.hit    { background: var(--hit);   border-color: var(--hit);   }
+  .tile.close  { background: var(--close); border-color: var(--close); }
+  .tile.miss   { background: var(--miss);  border-color: var(--miss);  color: var(--muted); }
+  .tile.flip { animation: flip .45s ease forwards; }
+  @keyframes pop  { 50% { transform: scale(1.12); } }
+  @keyframes flip { 0% { transform: rotateX(0); } 50% { transform: rotateX(90deg); } 100% { transform: rotateX(0); } }
+  .row.shake { animation: shake .35s; }
+  @keyframes shake {
+    20% { transform: translateX(-6px); } 40% { transform: translateX(6px); }
+    60% { transform: translateX(-4px); } 80% { transform: translateX(4px); }
+  }
+  .row.bounce .tile { animation: bounce .5s ease; }
+  @keyframes bounce { 35% { transform: translateY(-14px); } 70% { transform: translateY(3px); } }
+
+  #toast {
+    position: fixed;
+    top: 70px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--text);
+    color: var(--bg);
+    font-weight: 700;
+    padding: 10px 18px;
+    border-radius: 10px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s;
+    z-index: 10;
+    white-space: nowrap;
+  }
+  #toast.show { opacity: 1; }
+
+  #keyboard { width: 100%; display: flex; flex-direction: column; gap: 6px; padding-bottom: 10px; }
+  .krow { display: flex; justify-content: center; gap: 5px; }
+  .key {
+    flex: 1;
+    max-width: 44px;
+    height: 52px;
+    border: none;
+    border-radius: 6px;
+    background: var(--key);
+    color: var(--text);
+    font-size: .95rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background .15s;
+  }
+  .key:active { transform: scale(.94); }
+  .key.wide { max-width: 68px; flex: 1.6; font-size: .7rem; }
+  .key.hit   { background: var(--hit); }
+  .key.close { background: var(--close); }
+  .key.miss  { background: var(--miss); color: var(--muted); }
+
+  #overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 11, 16, .82);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 20;
+  }
+  #overlay.show { display: flex; }
+  .card {
+    background: var(--bg2);
+    border: 1px solid var(--tile-border);
+    border-radius: 16px;
+    padding: 28px 32px;
+    text-align: center;
+    max-width: 320px;
+    width: 88%;
+    animation: rise .25s ease;
+  }
+  @keyframes rise { from { transform: translateY(16px); opacity: 0; } }
+  .card h2 { font-size: 1.6rem; margin-bottom: 6px; }
+  .card .word { font-size: 2rem; font-weight: 800; letter-spacing: 6px; color: var(--accent); margin: 8px 0; text-transform: uppercase; }
+  .card p { color: var(--muted); margin-bottom: 18px; font-size: .9rem; }
+  .card button {
+    background: var(--accent);
+    border: none;
+    color: #fff;
+    font-size: 1rem;
+    font-weight: 800;
+    padding: 12px 28px;
+    border-radius: 10px;
+    cursor: pointer;
+    letter-spacing: 1px;
+  }
+  .card button:active { transform: scale(.96); }
+
+  .confetti {
+    position: fixed;
+    top: -10px;
+    width: 9px;
+    height: 14px;
+    z-index: 30;
+    pointer-events: none;
+    animation: fall linear forwards;
+  }
+  @keyframes fall { to { transform: translateY(105vh) rotate(720deg); } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">BLURT<span>!</span></div>
+  <div class="stats">
+    <div class="stat"><div class="num fire" id="streak">0</div><div class="lbl">streak</div></div>
+    <div class="stat"><div class="num" id="best">0</div><div class="lbl">best</div></div>
+    <div class="stat"><div class="num" id="solved">0</div><div class="lbl">solved</div></div>
+  </div>
+</header>
+
+<main>
+  <div id="board"></div>
+  <div id="keyboard"></div>
+</main>
+
+<div id="toast"></div>
+
+<div id="overlay">
+  <div class="card">
+    <h2 id="ov-title"></h2>
+    <div class="word" id="ov-word"></div>
+    <p id="ov-sub"></p>
+    <button id="ov-btn">BLURT AGAIN</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  // 4-letter words. Answers are drawn from this list and guesses must be in it.
+  const WORDS = (
+    "able acid aged also area army away baby back ball band bank base bath bead beam bean bear beat been beer bell belt bend best bike bill bird bite blow blue boat body boil bold bolt bomb bond bone book boom boot born boss both bowl brag brew brim bulk bull burn bury bush busy cage cake calf call calm came camp card care cart case cash cast cave cell cent chat chef chew chin chip chop cite city clam clap claw clay clip club clue coal coat code coin cold come cook cool cope copy cord core corn cost cozy crab crew crop crow cube curb cure curl cute dare dark dart dash data date dawn dead deaf deal dean dear debt deck deep deer demo deny desk dial dice diet dirt dish dive dock dome done doom door dose down doze drag draw drew drip drop drum duck duel dull dump dusk dust duty each earn ease east easy echo edge edit envy epic even ever evil exam exit face fact fade fail fair fake fall fame fang farm fast fate fear feat feed feel fell felt fern file fill film find fine fire firm fish fist five flag flat flaw fled flee flew flip flow foam fold folk fond food fool foot fore fork form fort foul four free frog from fuel full fume fund fury fuse fuss gain game gang gape gasp gate gave gaze gear gene gift girl give glad glee glow glue goal goat goes gold golf gone good gown grab gray grew grey grid grim grin grip grow gulf gulp guru gush gust hack hail hair half hall halt hand hang hard hare harm hash hate haul have hawk haze head heal heap hear heat heel heir held helm help herb herd here hero hide high hike hill hint hire hiss hold hole holy home hood hook hope horn hose host hour howl huge hull hung hunt hurl hurt hush hymn icon idea idle inch into iron item jade jail jazz jeep joke jolt jump junk jury just keen keep kelp kept kick kind king kiss kite knee knew knit knob knot know lace lack laid lake lamb lame lamp land lane last late lava lawn lazy lead leaf lean leap left lend lens less life lift like lime limp line link lion list live load loaf loan lock loft logo lone long look loop lord lose loss lost loud love luck lump lung lure lurk made mail main make male mall many mare mark mash mask mass mast mate maze meal mean meat meek meet melt memo mend menu mesh mess mild mile milk mill mind mine mint miss mist moat mock mode mold mood moon more moss most moth move much mule mush must mute myth nail name navy near neat neck need nest news next nice nine node none noon norm nose note noun oath obey odds okay omit once only onto open oval oven over pace pack page paid pail pain pair pale palm pane park part pass past path pave pawn peak pear peck peel peer perk pest pick pier pile pill pine pink pint pipe plan play plea plot plow plug plum plus poem poet poke pole poll pond pony pool poor pope pork port pose post pour pray prey prop pull pulp pump pure push quit quiz race rack rage raid rail rain rake ramp rank rant rare rash rate rave read real reap rear reef reel rent rest ribs rice rich ride ring riot ripe rise risk road roam roar robe rock rode role roll roof room root rope rose ruby rude ruin rule rung rush rust sack safe saga sage said sail sake sale salt same sand sane sang sank save scan scar seal seam seat seed seek seem seen self sell send sent shed ship shoe shop shot show shut side sigh sign silk sing sink site size skid skim skin skip slab slam slap sled slid slim slip slot slow snap snow soak soap soar sock soda sofa soft soil sold sole some song soon sore sort soul soup sour spam span spin spot spun spur stab star stay stem step stew stir stop stub such suit sums sung sunk sure surf swam swan swap swim tack tact tail take tale talk tall tame tank tape task team tear tell tend tent term test text than that them then they thin this thus tick tide tidy tier tile till tilt time tiny tire toad toll tomb tone took tool torn toss tour town trap tray tree trim trio trip true tube tuck tune turf turn twig twin type ugly undo unit upon urge used user vain vase vast veil vein vent verb very vest veto vibe vice view vine void volt vote wage wait wake walk wall wand want ward warm warn wash wasp wave wavy weak wear weed week weep well went wept were west what when whim whip wide wife wild will wilt wind wine wing wink wipe wire wise wish with wolf wood wool word wore work worm worn wrap yard yarn yawn year yell yoga your zero zest zinc zone zoom"
+  ).split(/\s+/).filter(w => w.length === 4);
+
+  const WORD_SET = new Set(WORDS);
+  const ROWS = 5, COLS = 4;
+
+  const board = document.getElementById("board");
+  const keyboard = document.getElementById("keyboard");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay");
+
+  let answer, row, col, grid, done;
+  let stats = { streak: 0, best: 0, solved: 0 };
+  try { stats = Object.assign(stats, JSON.parse(localStorage.getItem("blurt-stats") || "{}")); } catch (e) {}
+
+  function saveStats() {
+    try { localStorage.setItem("blurt-stats", JSON.stringify(stats)); } catch (e) {}
+    document.getElementById("streak").textContent = stats.streak;
+    document.getElementById("best").textContent = stats.best;
+    document.getElementById("solved").textContent = stats.solved;
+  }
+
+  function buildBoard() {
+    board.innerHTML = "";
+    for (let r = 0; r < ROWS; r++) {
+      const rowEl = document.createElement("div");
+      rowEl.className = "row";
+      for (let c = 0; c < COLS; c++) {
+        const t = document.createElement("div");
+        t.className = "tile";
+        rowEl.appendChild(t);
+      }
+      board.appendChild(rowEl);
+    }
+  }
+
+  function buildKeyboard() {
+    keyboard.innerHTML = "";
+    ["qwertyuiop", "asdfghjkl", "+zxcvbnm-"].forEach(rowStr => {
+      const krow = document.createElement("div");
+      krow.className = "krow";
+      for (const ch of rowStr) {
+        const key = document.createElement("button");
+        if (ch === "+") { key.textContent = "ENTER"; key.dataset.key = "enter"; key.className = "key wide"; }
+        else if (ch === "-") { key.textContent = "⌫"; key.dataset.key = "back"; key.className = "key wide"; }
+        else { key.textContent = ch; key.dataset.key = ch; key.className = "key"; }
+        key.addEventListener("click", () => press(key.dataset.key));
+        krow.appendChild(key);
+      }
+      keyboard.appendChild(krow);
+    });
+  }
+
+  function newRound() {
+    answer = WORDS[Math.floor(Math.random() * WORDS.length)];
+    row = 0; col = 0; done = false;
+    grid = Array.from({ length: ROWS }, () => Array(COLS).fill(""));
+    buildBoard();
+    buildKeyboard();
+    overlay.classList.remove("show");
+  }
+
+  function tileAt(r, c) { return board.children[r].children[c]; }
+
+  let toastTimer;
+  function showToast(msg, ms = 1200) {
+    toast.textContent = msg;
+    toast.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove("show"), ms);
+  }
+
+  function press(k) {
+    if (done) return;
+    if (k === "enter") return submit();
+    if (k === "back") {
+      if (col > 0) {
+        col--;
+        grid[row][col] = "";
+        const t = tileAt(row, col);
+        t.textContent = "";
+        t.classList.remove("filled");
+      }
+      return;
+    }
+    if (col < COLS && /^[a-z]$/.test(k)) {
+      grid[row][col] = k;
+      const t = tileAt(row, col);
+      t.textContent = k;
+      t.classList.add("filled");
+      col++;
+    }
+  }
+
+  function score(guess) {
+    // hit / close / miss with correct duplicate-letter handling
+    const res = Array(COLS).fill("miss");
+    const pool = {};
+    for (let i = 0; i < COLS; i++) {
+      if (guess[i] === answer[i]) res[i] = "hit";
+      else pool[answer[i]] = (pool[answer[i]] || 0) + 1;
+    }
+    for (let i = 0; i < COLS; i++) {
+      if (res[i] === "miss" && pool[guess[i]] > 0) {
+        res[i] = "close";
+        pool[guess[i]]--;
+      }
+    }
+    return res;
+  }
+
+  function paintKey(letter, state) {
+    const key = keyboard.querySelector(`[data-key="${letter}"]`);
+    if (!key) return;
+    const rank = { miss: 1, close: 2, hit: 3 };
+    const cur = key.classList.contains("hit") ? "hit" : key.classList.contains("close") ? "close" : key.classList.contains("miss") ? "miss" : "";
+    if (!cur || rank[state] > rank[cur]) {
+      key.classList.remove("hit", "close", "miss");
+      key.classList.add(state);
+    }
+  }
+
+  function submit() {
+    const guess = grid[row].join("");
+    const rowEl = board.children[row];
+    if (guess.length < COLS) {
+      rowEl.classList.add("shake");
+      setTimeout(() => rowEl.classList.remove("shake"), 400);
+      return showToast("Too short!");
+    }
+    if (!WORD_SET.has(guess)) {
+      rowEl.classList.add("shake");
+      setTimeout(() => rowEl.classList.remove("shake"), 400);
+      return showToast("Not in my book!");
+    }
+
+    done = true; // lock input during reveal
+    const result = score(guess);
+    result.forEach((state, i) => {
+      const t = tileAt(row, i);
+      setTimeout(() => {
+        t.classList.add("flip");
+        setTimeout(() => { t.classList.add(state); paintKey(guess[i], state); }, 220);
+      }, i * 180);
+    });
+
+    setTimeout(() => {
+      if (guess === answer) return win(rowEl);
+      row++;
+      col = 0;
+      if (row >= ROWS) return lose();
+      done = false;
+    }, COLS * 180 + 350);
+  }
+
+  function win(rowEl) {
+    rowEl.classList.add("bounce");
+    stats.streak++;
+    stats.solved++;
+    if (stats.streak > stats.best) stats.best = stats.streak;
+    saveStats();
+    confetti();
+    const brags = ["GENIUS!", "BLURTED IT!", "ON FIRE!", "UNSTOPPABLE!", "TOO EASY?", "NAILED IT!"];
+    setTimeout(() => endCard(brags[Math.min(row, 2) === 0 ? 0 : Math.floor(Math.random() * brags.length)],
+      answer, `Streak: ${stats.streak} 🔥`), 700);
+  }
+
+  function lose() {
+    const lost = stats.streak;
+    stats.streak = 0;
+    saveStats();
+    endCard("SO CLOSE!", answer, lost > 1 ? `Streak of ${lost} — gone. Win it back?` : "It happens. Go again!");
+  }
+
+  function endCard(title, word, sub) {
+    document.getElementById("ov-title").textContent = title;
+    document.getElementById("ov-word").textContent = word;
+    document.getElementById("ov-sub").textContent = sub;
+    overlay.classList.add("show");
+  }
+
+  function confetti() {
+    const colors = ["#ff5d8f", "#2bb673", "#e6a817", "#4f9cff", "#b067ff"];
+    for (let i = 0; i < 60; i++) {
+      const c = document.createElement("div");
+      c.className = "confetti";
+      c.style.left = Math.random() * 100 + "vw";
+      c.style.background = colors[i % colors.length];
+      c.style.animationDuration = 1.4 + Math.random() * 1.4 + "s";
+      c.style.animationDelay = Math.random() * .3 + "s";
+      document.body.appendChild(c);
+      setTimeout(() => c.remove(), 3200);
+    }
+  }
+
+  document.getElementById("ov-btn").addEventListener("click", newRound);
+
+  document.addEventListener("keydown", e => {
+    if (overlay.classList.contains("show")) {
+      if (e.key === "Enter") newRound();
+      return;
+    }
+    if (e.key === "Enter") press("enter");
+    else if (e.key === "Backspace") press("back");
+    else if (/^[a-zA-Z]$/.test(e.key)) press(e.key.toLowerCase());
+  });
+
+  saveStats();
+  newRound();
+})();
+</script>
+</body>
+</html>
