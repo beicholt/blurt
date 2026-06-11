@@ -2,6 +2,8 @@
 
 A stupidly simple, highly addictive word game.
 
+**▶ Play now: https://beicholt.github.io/blurt/**
+
 **Blurt the 4-letter word in 5 tries. Keep the streak alive. Make everyone else feel slow.**
 
 ## How to play

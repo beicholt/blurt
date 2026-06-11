@@ -499,6 +499,7 @@
 
   // ----- Share: spoiler-free emoji grid + rank + streak -----
   const EMOJI = { hit: "🟩", close: "🟨", miss: "⬛" };
+  const PLAY_URL = "https://beicholt.github.io/blurt/";
   function shareText() {
     const won = rowScores.length && rowScores[rowScores.length - 1].word === answer;
     const grid = rowScores.map(r => r.states.map(s => EMOJI[s]).join("")).join("\n");
@@ -514,7 +515,7 @@
       if (stats.streak > 1) lines.push(`🔥 streak: ${stats.streak}`);
       lines.push("Think you're faster?");
     }
-    if (/^https?:/.test(location.href)) lines.push(location.href.split(/[?#]/)[0]);
+    lines.push(PLAY_URL);
     return lines.join("\n");
   }
 
