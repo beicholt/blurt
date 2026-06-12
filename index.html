@@ -263,7 +263,7 @@
     <button class="tab active" data-mode="daily">DAILY</button>
     <button class="tab" data-mode="endless">ENDLESS</button>
   </div>
-  <p id="hint">tap a letter · type a swap · return locks the step</p>
+  <p id="hint">tap a tile · swap a letter · lock it in</p>
   <div id="puzzle"></div>
   <div id="meta"><span id="rungs"></span></div>
 </main>
@@ -290,10 +290,10 @@
 <div id="help">
   <div class="card help-card">
     <h2>HOW TO BLURT</h2>
-    <p class="help-goal">Turn the <b>top word</b> into the <b>goal word</b><br>at the bottom, one step at a time.</p>
+    <p class="help-goal">Turn the <b>top word</b> into the <b>goal word</b>,<br>one letter at a time.</p>
     <ol class="help-steps">
-      <li><b>Tap a letter</b> in the glowing row, just above the goal</li>
-      <li><b>Type</b> a new letter to swap it in</li>
+      <li><b>Tap a letter</b> in the glowing row</li>
+      <li><b>Type</b> a new letter to swap in</li>
       <li>Hit <b>return ↵</b> — real words lock in; a made-up word <b>costs a step</b></li>
     </ol>
     <p class="help-goal" style="margin-bottom:8px">Each step gets you closer:</p>
@@ -305,7 +305,9 @@
       <div class="mini"><span class="tile lock">w</span><span class="tile lock">a</span><span class="tile lock">r</span><span class="tile lock">m</span></div>
     </div>
     <p class="help-rules">
-      <span style="color:var(--lock)">■</span> <b>Green</b> letters already match the goal.<br>
+      <span style="color:var(--lock)">■</span> <b>Green</b> — letter matches the goal.<br>
+      <span style="color:var(--changed)">■</span> <b>Purple</b> — the letter you swapped.<br>
+      <span style="color:#c0334a">■</span> <b>Red</b> — not a word. Costs a step.<br>
       Fewer steps = bigger flex. Match the <b>perfect path</b> — or beat it with a rare word.
     </p>
     <div class="btnrow"><button id="help-btn-close">LET ME BLURT</button></div>
