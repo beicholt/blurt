@@ -2,9 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>BLURT! — climb the word ladder</title>
-<meta name="description" content="BLURT! Turn one word into another, one letter at a time. Every rung must be a real word. Match the perfect climb. Keep the streak alive.">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content">
+<title>BLURT! — word to word, one letter at a time</title>
+<meta name="description" content="BLURT! Turn one word into another, one letter per step. Every step must be a real word. Match the perfect path. Keep the streak alive.">
 <style>
   :root {
     --bg: #12131a;
@@ -97,10 +97,20 @@
     flex-direction: column;
     align-items: center;
     gap: 5px;
-    max-height: 46vh;
+    flex: 1;
+    min-height: 0;
     overflow-y: auto;
     padding: 4px 8px;
   }
+  /* compact layout while the on-screen keyboard is open (or very short windows) */
+  body.squeeze header { padding: 4px 16px; }
+  body.squeeze .logo { font-size: 1.2rem; }
+  body.squeeze .stat .num { font-size: 1rem; }
+  body.squeeze #hint { display: none; }
+  body.squeeze .tab { padding: 4px 14px; font-size: .65rem; }
+  body.squeeze .tile { width: min(10.5vw, 40px); height: min(10.5vw, 40px); font-size: 1.05rem; }
+  body.squeeze #puzzle { gap: 4px; }
+  body.squeeze main { padding: 4px 10px; }
   .row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
   .tile {
     width: min(13.5vw, 52px);
@@ -156,7 +166,7 @@
 
   /* invisible input that summons the device's native keyboard;
      16px font stops iOS from zooming in on focus */
-  #kbform { position: fixed; bottom: 0; left: 0; }
+  #kbform { position: fixed; top: 0; left: 0; }
   #kb {
     width: 2px;
     height: 2px;
@@ -175,12 +185,16 @@
     inset: 0;
     background: rgba(10, 11, 16, .82);
     display: none;
-    align-items: center;
-    justify-content: center;
+    overflow-y: auto;
     z-index: 20;
   }
   #overlay.show, #help.show { display: flex; }
+  body.squeeze .card { padding: 14px 20px; }
+  body.squeeze .card h2 { font-size: 1.15rem; }
+  body.squeeze .mini .tile { width: 22px; height: 22px; font-size: .8rem; }
+  body.squeeze .help-steps { line-height: 1.5; }
   .card {
+    margin: auto;
     background: var(--bg2);
     border: 1px solid var(--tile-border);
     border-radius: 16px;
@@ -239,7 +253,7 @@
   <div class="stats">
     <div class="stat"><div class="num fire" id="streak">0</div><div class="lbl">streak</div></div>
     <div class="stat"><div class="num" id="best">0</div><div class="lbl">best</div></div>
-    <div class="stat"><div class="num" id="solved">0</div><div class="lbl">climbed</div></div>
+    <div class="stat"><div class="num" id="solved">0</div><div class="lbl">solved</div></div>
   </div>
 </header>
 
@@ -248,7 +262,7 @@
     <button class="tab active" data-mode="daily">DAILY</button>
     <button class="tab" data-mode="endless">ENDLESS</button>
   </div>
-  <p id="hint">tap a letter · type a swap · return locks the rung</p>
+  <p id="hint">tap a letter · type a swap · return locks the step</p>
   <div id="puzzle"></div>
   <div id="meta"><span id="rungs"></span></div>
 </main>
@@ -267,7 +281,7 @@
     <p id="ov-sub"></p>
     <div class="btnrow">
       <button id="ov-share">SHARE 📣</button>
-      <button id="ov-btn" class="ghost">CLIMB AGAIN</button>
+      <button id="ov-btn" class="ghost">BLURT AGAIN</button>
     </div>
   </div>
 </div>
@@ -275,25 +289,25 @@
 <div id="help">
   <div class="card help-card">
     <h2>HOW TO BLURT</h2>
-    <p class="help-goal">Climb from the <b>bottom word</b> up to the<br><b>goal word</b> at the top, one rung at a time.</p>
+    <p class="help-goal">Turn the <b>top word</b> into the <b>goal word</b><br>at the bottom, one step at a time.</p>
     <ol class="help-steps">
-      <li><b>Tap a letter</b> in the glowing row, just under the goal</li>
+      <li><b>Tap a letter</b> in the glowing row, just above the goal</li>
       <li><b>Type</b> a new letter to swap it in</li>
-      <li>Hit <b>return ↵</b> — if it spells a real word, the rung locks in</li>
+      <li>Hit <b>return ↵</b> — if it spells a real word, the step locks in</li>
     </ol>
-    <p class="help-goal" style="margin-bottom:8px">Each rung climbs you closer (read it bottom-up):</p>
+    <p class="help-goal" style="margin-bottom:8px">Each step gets you closer:</p>
     <div class="lad">
-      <div class="mini"><span class="tile lock">w</span><span class="tile lock">a</span><span class="tile lock">r</span><span class="tile lock">m</span></div>
-      <div class="mini"><span class="tile lock">w</span><span class="tile lock">a</span><span class="tile lock">r</span><span class="tile">d</span></div>
-      <div class="mini"><span class="tile lock">w</span><span class="tile">o</span><span class="tile lock">r</span><span class="tile">d</span></div>
-      <div class="mini"><span class="tile">c</span><span class="tile">o</span><span class="tile lock">r</span><span class="tile">d</span></div>
       <div class="mini"><span class="tile">c</span><span class="tile">o</span><span class="tile">l</span><span class="tile">d</span></div>
+      <div class="mini"><span class="tile">c</span><span class="tile">o</span><span class="tile lock">r</span><span class="tile">d</span></div>
+      <div class="mini"><span class="tile lock">w</span><span class="tile">o</span><span class="tile lock">r</span><span class="tile">d</span></div>
+      <div class="mini"><span class="tile lock">w</span><span class="tile lock">a</span><span class="tile lock">r</span><span class="tile">d</span></div>
+      <div class="mini"><span class="tile lock">w</span><span class="tile lock">a</span><span class="tile lock">r</span><span class="tile lock">m</span></div>
     </div>
     <p class="help-rules">
       <span style="color:var(--lock)">■</span> <b>Green</b> letters already match the goal.<br>
-      Fewer rungs = bigger flex. Match the <b>perfect climb</b> — or beat it with a rare word.
+      Fewer steps = bigger flex. Match the <b>perfect path</b> — or beat it with a rare word.
     </p>
-    <div class="btnrow"><button id="help-btn-close">LET ME CLIMB</button></div>
+    <div class="btnrow"><button id="help-btn-close">LET ME BLURT</button></div>
   </div>
 </div>
 
@@ -431,16 +445,15 @@
     return row;
   }
 
-  // The ladder builds upward: goal pinned at the top, start at the bottom,
-  // each locked rung climbs toward the goal.
+  // Top-down path: start at the top, goal pinned at the bottom, each locked
+  // step works downward toward it.
   function render() {
     puzzleEl.innerHTML = "";
+    for (let n = 0; n < ladder.length; n++) {
+      const changedIdx = n === 0 ? -1 : diffIdx(ladder[n - 1], ladder[n]);
+      puzzleEl.appendChild(tileRow(ladder[n], { lock: true, changedIdx }));
+    }
     if (!done) {
-      puzzleEl.appendChild(tileRow(puzzle.target, { cls: "goal" }));
-      const ar = document.createElement("div");
-      ar.className = "arrow";
-      ar.textContent = "▲";
-      puzzleEl.appendChild(ar);
       const prev = ladder[ladder.length - 1];
       const row = document.createElement("div");
       row.className = "row cur";
@@ -455,14 +468,15 @@
         row.appendChild(t);
       }
       puzzleEl.appendChild(row);
-    }
-    for (let n = ladder.length - 1; n >= 0; n--) {
-      const changedIdx = n === 0 ? -1 : diffIdx(ladder[n - 1], ladder[n]);
-      puzzleEl.appendChild(tileRow(ladder[n], { lock: true, changedIdx }));
+      const ar = document.createElement("div");
+      ar.className = "arrow";
+      ar.textContent = "▼";
+      puzzleEl.appendChild(ar);
+      puzzleEl.appendChild(tileRow(puzzle.target, { cls: "goal" }));
     }
     const n = ladder.length - 1;
-    rungsEl.textContent = `${n} rung${n === 1 ? "" : "s"} · perfect is ${puzzle.par}`;
-    puzzleEl.scrollTop = 0;
+    rungsEl.textContent = `${n} step${n === 1 ? "" : "s"} · perfect is ${puzzle.par}`;
+    puzzleEl.scrollTop = puzzleEl.scrollHeight;
   }
 
   function diffIdx(a, b) {
@@ -527,7 +541,7 @@
     saveStats();
     render();
     endCard(rankFor(ladder.length - 1 - puzzle.par), `${puzzle.start} → ${puzzle.target}`,
-      `Next climb in ${nextDailyIn()} — flex this one while it lasts.`);
+      `Next word in ${nextDailyIn()} — flex this one while it lasts.`);
   }
 
   function press(k) {
@@ -559,7 +573,7 @@
     render();
   }
 
-  const RANKS = ["🔮 PERFECT CLIMB!", "🧠 SO CLOSE!", "🔥 SOLID!", "😅 GOT THERE!"];
+  const RANKS = ["🔮 PERFECT PATH!", "🧠 SO CLOSE!", "🔥 SOLID!", "😅 GOT THERE!"];
   function rankFor(margin) {
     if (margin < 0) return "🦅 BEYOND PERFECT!"; // an off-graph word shortcut
     return RANKS[Math.min(margin, RANKS.length - 1)];
@@ -568,7 +582,7 @@
   function win() {
     done = true;
     render();
-    puzzleEl.firstChild.classList.add("bounce");
+    puzzleEl.lastChild.classList.add("bounce");
     const rungs = ladder.length - 1;
     const margin = rungs - puzzle.par;
     if (mode === "daily") {
@@ -586,10 +600,10 @@
     saveStats();
     if (margin <= 1) confetti();
     const sub = mode === "daily"
-      ? `${rungs} rungs (perfect is ${puzzle.par}). Daily streak: ${daily.streak} 🔥`
+      ? `${rungs} steps (perfect is ${puzzle.par}). Daily streak: ${daily.streak} 🔥`
       : margin <= 0
         ? `Perfect streak: ${stats.streak} 🔥 Don't blink.`
-        : `${rungs} rungs (perfect is ${puzzle.par}). Perfect climbs feed the streak!`;
+        : `${rungs} steps (perfect is ${puzzle.par}). Perfect paths feed the streak!`;
     setTimeout(() => endCard(rankFor(margin), `${puzzle.start} → ${puzzle.target}`, sub), 650);
   }
 
@@ -597,7 +611,7 @@
     document.getElementById("ov-title").textContent = title;
     document.getElementById("ov-word").textContent = word;
     document.getElementById("ov-sub").textContent = sub;
-    document.getElementById("ov-btn").textContent = mode === "daily" ? "PLAY ENDLESS" : "CLIMB AGAIN";
+    document.getElementById("ov-btn").textContent = mode === "daily" ? "PLAY ENDLESS" : "BLURT AGAIN";
     overlay.classList.add("show");
   }
 
@@ -607,8 +621,8 @@
     const rungs = ladder.length - 1;
     const lines = [];
     const head = mode === "daily" ? `BLURT! Daily #${todayNum()}` : "BLURT! Endless";
-    lines.push(`${head} — ${puzzle.start.toUpperCase()}🪜${puzzle.target.toUpperCase()}`);
-    lines.push(`${rungs} rungs · perfect is ${puzzle.par} ${rungs < puzzle.par ? "🦅" : rungs === puzzle.par ? "🔮" : ""}`);
+    lines.push(`${head} — ${puzzle.start.toUpperCase()} ➜ ${puzzle.target.toUpperCase()}`);
+    lines.push(`${rungs} steps · perfect is ${puzzle.par} ${rungs < puzzle.par ? "🦅" : rungs === puzzle.par ? "🔮" : ""}`);
     for (let n = 1; n <= Math.min(rungs, MAXSHARE); n++) {
       const w = ladder[n];
       const ci = diffIdx(ladder[n - 1], w);
@@ -619,7 +633,7 @@
     if (rungs > MAXSHARE) lines.push("…it was a journey.");
     const s = mode === "daily" ? daily : stats;
     if (s.streak > 1) lines.push(`🔥 streak: ${s.streak}`);
-    lines.push(mode === "daily" ? "Climb it faster." : "Race you up.");
+    lines.push(mode === "daily" ? "Find a shorter path." : "Race you.");
     lines.push(PLAY_URL);
     return lines.join("\n");
   }
@@ -703,6 +717,20 @@
     else if (e.key === "Backspace") press("back");
     else if (/^[a-zA-Z]$/.test(e.key)) press(e.key.toLowerCase());
   });
+
+  // Keep the whole game inside the visible area when the mobile keyboard is
+  // open: size the page to the visual viewport and compact the layout.
+  if (window.visualViewport) {
+    const vv = window.visualViewport;
+    const fit = () => {
+      document.body.style.height = vv.height + "px";
+      document.body.classList.toggle("squeeze", vv.height < 540);
+      window.scrollTo(0, 0);
+    };
+    vv.addEventListener("resize", fit);
+    vv.addEventListener("scroll", fit);
+    fit();
+  }
 
   saveStats();
   newRound();
