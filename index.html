@@ -119,6 +119,7 @@
   .tile.lock    { background: var(--lock);    border-color: var(--lock); }
   .tile.changed { background: var(--changed); border-color: var(--changed); }
   .row.goal .tile { border-style: dashed; border-color: var(--accent); color: var(--accent); background: transparent; }
+  .row.cur { background: rgba(255,93,143,.08); border-radius: 10px; padding: 3px; }
   .row.cur .tile { cursor: pointer; border-color: var(--muted); }
   .row.cur .tile.sel { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(255,93,143,.35); }
   .row.cur .tile.pending { color: var(--changed); border-color: var(--changed); animation: pop .09s ease; }
@@ -134,18 +135,6 @@
 
   #meta { display: flex; align-items: center; gap: 14px; }
   #rungs { font-size: .78rem; color: var(--muted); letter-spacing: 1px; }
-  #undo {
-    border: 1px solid var(--tile-border);
-    background: transparent;
-    color: var(--muted);
-    font-weight: 700;
-    font-size: .7rem;
-    letter-spacing: 1px;
-    padding: 6px 14px;
-    border-radius: 999px;
-    cursor: pointer;
-  }
-  #undo:active { transform: scale(.95); }
 
   #toast {
     position: fixed;
@@ -261,10 +250,7 @@
   </div>
   <p id="hint">tap a letter · type a swap · return locks the rung</p>
   <div id="puzzle"></div>
-  <div id="meta">
-    <button id="undo">↩ UNDO RUNG</button>
-    <span id="rungs"></span>
-  </div>
+  <div id="meta"><span id="rungs"></span></div>
 </main>
 
 <form id="kbform" autocomplete="off">
@@ -289,19 +275,19 @@
 <div id="help">
   <div class="card help-card">
     <h2>HOW TO BLURT</h2>
-    <p class="help-goal">Turn the <b>top word</b> into the <b>goal word</b><br>by climbing one rung at a time.</p>
+    <p class="help-goal">Climb from the <b>bottom word</b> up to the<br><b>goal word</b> at the top, one rung at a time.</p>
     <ol class="help-steps">
-      <li><b>Tap a letter</b> in the bottom word</li>
+      <li><b>Tap a letter</b> in the glowing row, just under the goal</li>
       <li><b>Type</b> a new letter to swap it in</li>
       <li>Hit <b>return ↵</b> — if it spells a real word, the rung locks in</li>
     </ol>
-    <p class="help-goal" style="margin-bottom:8px">Repeat until you reach the goal:</p>
+    <p class="help-goal" style="margin-bottom:8px">Each rung climbs you closer (read it bottom-up):</p>
     <div class="lad">
+      <div class="mini"><span class="tile lock">w</span><span class="tile lock">a</span><span class="tile lock">r</span><span class="tile lock">m</span></div>
+      <div class="mini"><span class="tile lock">w</span><span class="tile lock">a</span><span class="tile lock">r</span><span class="tile">d</span></div>
+      <div class="mini"><span class="tile lock">w</span><span class="tile">o</span><span class="tile lock">r</span><span class="tile">d</span></div>
+      <div class="mini"><span class="tile">c</span><span class="tile">o</span><span class="tile lock">r</span><span class="tile">d</span></div>
       <div class="mini"><span class="tile">c</span><span class="tile">o</span><span class="tile">l</span><span class="tile">d</span></div>
-      <div class="mini"><span class="tile">c</span><span class="tile">o</span><span class="tile changed">r</span><span class="tile">d</span></div>
-      <div class="mini"><span class="tile changed">w</span><span class="tile">o</span><span class="tile">r</span><span class="tile">d</span></div>
-      <div class="mini"><span class="tile">w</span><span class="tile changed">a</span><span class="tile">r</span><span class="tile">d</span></div>
-      <div class="mini"><span class="tile lock">w</span><span class="tile lock">a</span><span class="tile lock">r</span><span class="tile changed">m</span></div>
     </div>
     <p class="help-rules">
       <span style="color:var(--lock)">■</span> <b>Green</b> letters already match the goal.<br>
@@ -439,21 +425,22 @@
       t.className = "tile";
       t.textContent = word[i];
       if (opts.lock && word[i] === puzzle.target[i]) t.classList.add("lock");
-      if (opts.changedIdx === i) t.classList.add("changed");
+      else if (opts.changedIdx === i) t.classList.add("changed");
       row.appendChild(t);
     }
     return row;
   }
 
+  // The ladder builds upward: goal pinned at the top, start at the bottom,
+  // each locked rung climbs toward the goal.
   function render() {
     puzzleEl.innerHTML = "";
-    ladder.forEach((w, n) => {
-      const changedIdx = n === 0 ? -1 : diffIdx(ladder[n - 1], w);
-      const row = tileRow(w, { lock: true, changedIdx });
-      // the changed letter shows teal if it also matches the goal (progress beats history)
-      puzzleEl.appendChild(row);
-    });
     if (!done) {
+      puzzleEl.appendChild(tileRow(puzzle.target, { cls: "goal" }));
+      const ar = document.createElement("div");
+      ar.className = "arrow";
+      ar.textContent = "▲";
+      puzzleEl.appendChild(ar);
       const prev = ladder[ladder.length - 1];
       const row = document.createElement("div");
       row.className = "row cur";
@@ -463,21 +450,19 @@
         t.className = "tile";
         t.textContent = cur[i];
         if (i === sel) t.classList.add("sel");
-        if (cur[i] === puzzle.target[i]) t.classList.add("lock");
-        else if (cur[i] !== prev[i]) t.classList.add("pending");
+        if (cur[i] !== prev[i]) t.classList.add("pending"); // no green until locked in
         t.addEventListener("click", () => { sel = i; render(); focusKb(); });
         row.appendChild(t);
       }
       puzzleEl.appendChild(row);
-      const ar = document.createElement("div");
-      ar.className = "arrow";
-      ar.textContent = "▼ goal";
-      puzzleEl.appendChild(ar);
-      puzzleEl.appendChild(tileRow(puzzle.target, { cls: "goal" }));
+    }
+    for (let n = ladder.length - 1; n >= 0; n--) {
+      const changedIdx = n === 0 ? -1 : diffIdx(ladder[n - 1], ladder[n]);
+      puzzleEl.appendChild(tileRow(ladder[n], { lock: true, changedIdx }));
     }
     const n = ladder.length - 1;
     rungsEl.textContent = `${n} rung${n === 1 ? "" : "s"} · perfect is ${puzzle.par}`;
-    puzzleEl.scrollTop = puzzleEl.scrollHeight;
+    puzzleEl.scrollTop = 0;
   }
 
   function diffIdx(a, b) {
@@ -574,13 +559,6 @@
     render();
   }
 
-  function undo() {
-    if (done || ladder.length < 2) return;
-    ladder.pop();
-    cur = ladder[ladder.length - 1].split("");
-    render();
-  }
-
   const RANKS = ["🔮 PERFECT CLIMB!", "🧠 SO CLOSE!", "🔥 SOLID!", "😅 GOT THERE!"];
   function rankFor(margin) {
     if (margin < 0) return "🦅 BEYOND PERFECT!"; // an off-graph word shortcut
@@ -590,8 +568,7 @@
   function win() {
     done = true;
     render();
-    const lastRow = puzzleEl.lastChild;
-    lastRow.classList.add("bounce");
+    puzzleEl.firstChild.classList.add("bounce");
     const rungs = ladder.length - 1;
     const margin = rungs - puzzle.par;
     if (mode === "daily") {
@@ -692,7 +669,6 @@
   document.querySelectorAll(".tab").forEach(t =>
     t.addEventListener("click", () => { if (t.dataset.mode !== mode) setMode(t.dataset.mode); }));
 
-  document.getElementById("undo").addEventListener("click", () => { undo(); focusKb(); });
   document.getElementById("ov-share").addEventListener("click", share);
   document.getElementById("ov-btn").addEventListener("click", () => {
     if (mode === "daily") setMode("endless");
