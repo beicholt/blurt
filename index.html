@@ -129,6 +129,7 @@
   .tile.lock    { background: var(--lock);    border-color: var(--lock); }
   .tile.changed { background: var(--changed); border-color: var(--changed); }
   .row.goal .tile { border-style: dashed; border-color: var(--accent); color: var(--accent); background: transparent; }
+  .row.bad .tile { background: #8c2433; border-color: #8c2433; color: rgba(242,243,247,.55); text-decoration: line-through; }
   .row.cur { background: rgba(255,93,143,.08); border-radius: 10px; padding: 3px; }
   .row.cur .tile { cursor: pointer; border-color: var(--muted); }
   .row.cur .tile.sel { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(255,93,143,.35); }
@@ -293,7 +294,7 @@
     <ol class="help-steps">
       <li><b>Tap a letter</b> in the glowing row, just above the goal</li>
       <li><b>Type</b> a new letter to swap it in</li>
-      <li>Hit <b>return ↵</b> — if it spells a real word, the step locks in</li>
+      <li>Hit <b>return ↵</b> — real words lock in; a made-up word <b>costs a step</b></li>
     </ol>
     <p class="help-goal" style="margin-bottom:8px">Each step gets you closer:</p>
     <div class="lad">
@@ -348,6 +349,7 @@
   let mode = "daily";
   let puzzle;          // {start, target, par}
   let ladder;          // accepted words, ladder[0] === start
+  let hist;            // every submission in order: {w, bad} — fumbles cost a step
   let cur, sel, done;  // current row letters, selected tile index
 
   function load(key, fallback) {
@@ -449,9 +451,15 @@
   // step works downward toward it.
   function render() {
     puzzleEl.innerHTML = "";
-    for (let n = 0; n < ladder.length; n++) {
-      const changedIdx = n === 0 ? -1 : diffIdx(ladder[n - 1], ladder[n]);
-      puzzleEl.appendChild(tileRow(ladder[n], { lock: true, changedIdx }));
+    let prevGood = null;
+    for (const e of hist) {
+      if (e.bad) {
+        puzzleEl.appendChild(tileRow(e.w, { cls: "bad" }));
+        continue;
+      }
+      const changedIdx = prevGood === null ? -1 : diffIdx(prevGood, e.w);
+      puzzleEl.appendChild(tileRow(e.w, { lock: true, changedIdx }));
+      prevGood = e.w;
     }
     if (!done) {
       const prev = ladder[ladder.length - 1];
@@ -474,7 +482,7 @@
       puzzleEl.appendChild(ar);
       puzzleEl.appendChild(tileRow(puzzle.target, { cls: "goal" }));
     }
-    const n = ladder.length - 1;
+    const n = hist.length - 1;
     rungsEl.textContent = `${n} step${n === 1 ? "" : "s"} · perfect is ${puzzle.par}`;
     puzzleEl.scrollTop = puzzleEl.scrollHeight;
   }
@@ -528,6 +536,7 @@
       puzzle = genPuzzle(mulberry32((Math.random() * 0x7fffffff) | 0));
     }
     ladder = [puzzle.start];
+    hist = [{ w: puzzle.start, bad: false }];
     cur = puzzle.start.split("");
     sel = 0;
     saveStats();
@@ -537,7 +546,8 @@
   function restoreDaily(last) {
     done = true;
     puzzle = { start: last.start, target: last.target, par: last.par };
-    ladder = last.ladder;
+    hist = last.hist || (last.ladder || []).map(w => ({ w, bad: false }));
+    ladder = hist.filter(e => !e.bad).map(e => e.w);
     saveStats();
     render();
     endCard(rankFor(ladder.length - 1 - puzzle.par), `${puzzle.start} → ${puzzle.target}`,
@@ -562,12 +572,15 @@
     const rowEl = document.getElementById("cur-row");
     if (w === prev) return showToast("Swap one letter first!");
     if (!WORD_SET.has(w)) {
+      // a fumble: stamped onto the board in red and it costs a step
+      hist.push({ w, bad: true });
       rowEl.classList.add("shake");
-      showToast("Not a word — try another!", 1500);
+      showToast("Not a word — that costs a step!", 1600);
       setTimeout(() => { cur = prev.split(""); render(); }, 420);
       return;
     }
     ladder.push(w);
+    hist.push({ w, bad: false });
     if (w === puzzle.target) return win();
     cur = w.split("");
     render();
@@ -583,7 +596,7 @@
     done = true;
     render();
     puzzleEl.lastChild.classList.add("bounce");
-    const rungs = ladder.length - 1;
+    const rungs = hist.length - 1;
     const margin = rungs - puzzle.par;
     if (mode === "daily") {
       const today = todayNum();
@@ -591,7 +604,7 @@
       daily.lastWinDay = today;
       daily.solved++;
       if (daily.streak > daily.best) daily.best = daily.streak;
-      daily.lastResult = { day: today, start: puzzle.start, target: puzzle.target, par: puzzle.par, ladder };
+      daily.lastResult = { day: today, start: puzzle.start, target: puzzle.target, par: puzzle.par, hist };
     } else {
       stats.solved++;
       stats.streak = margin <= 0 ? stats.streak + 1 : 0; // endless streak = consecutive perfect climbs
@@ -608,6 +621,7 @@
   }
 
   function endCard(title, word, sub) {
+    kb.blur(); // round's over — drop the keyboard so the card has the screen
     document.getElementById("ov-title").textContent = title;
     document.getElementById("ov-word").textContent = word;
     document.getElementById("ov-sub").textContent = sub;
@@ -618,17 +632,20 @@
   // ----- Share: rung trail, no intermediate words revealed -----
   const PLAY_URL = "https://beicholt.github.io/blurt/";
   function shareText() {
-    const rungs = ladder.length - 1;
+    const rungs = hist.length - 1;
     const lines = [];
     const head = mode === "daily" ? `BLURT! Daily #${todayNum()}` : "BLURT! Endless";
     lines.push(`${head} — ${puzzle.start.toUpperCase()} ➜ ${puzzle.target.toUpperCase()}`);
     lines.push(`${rungs} steps · perfect is ${puzzle.par} ${rungs < puzzle.par ? "🦅" : rungs === puzzle.par ? "🔮" : ""}`);
+    let prevGood = hist[0].w;
     for (let n = 1; n <= Math.min(rungs, MAXSHARE); n++) {
-      const w = ladder[n];
-      const ci = diffIdx(ladder[n - 1], w);
+      const e = hist[n];
+      if (e.bad) { lines.push("🟥🟥🟥🟥"); continue; }
+      const ci = diffIdx(prevGood, e.w);
       let row = "";
-      for (let i = 0; i < L; i++) row += w[i] === puzzle.target[i] ? "🟩" : (i === ci ? "🟪" : "⬜");
+      for (let i = 0; i < L; i++) row += e.w[i] === puzzle.target[i] ? "🟩" : (i === ci ? "🟪" : "⬜");
       lines.push(row);
+      prevGood = e.w;
     }
     if (rungs > MAXSHARE) lines.push("…it was a journey.");
     const s = mode === "daily" ? daily : stats;
@@ -690,7 +707,7 @@
     focusKb();
   });
 
-  function toggleHelp(show) { help.classList.toggle("show", show); }
+  function toggleHelp(show) { help.classList.toggle("show", show); if (show) kb.blur(); }
   document.getElementById("help-btn").addEventListener("click", () => toggleHelp(true));
   document.getElementById("help-btn-close").addEventListener("click", () => { toggleHelp(false); focusKb(); });
   help.addEventListener("click", e => { if (e.target === help) toggleHelp(false); });
