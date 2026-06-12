@@ -97,7 +97,7 @@
     flex-direction: column;
     align-items: center;
     gap: 5px;
-    flex: 1;
+    flex: 0 1 auto;
     min-height: 0;
     overflow-y: auto;
     padding: 4px 8px;
@@ -724,7 +724,7 @@
     const vv = window.visualViewport;
     const fit = () => {
       document.body.style.height = vv.height + "px";
-      document.body.classList.toggle("squeeze", vv.height < 540);
+      document.body.classList.toggle("squeeze", vv.height < 430);
       window.scrollTo(0, 0);
     };
     vv.addEventListener("resize", fit);
