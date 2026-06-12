@@ -12,7 +12,7 @@
     --text: #f2f3f7;
     --muted: #8b8fa3;
     --tile-border: #3a3d4d;
-    --lock: #15a89b;       /* letter already matches the goal */
+    --lock: #27b364;       /* letter already matches the goal */
     --changed: #8e5bff;    /* the letter you swapped this rung */
     --accent: #ff5d8f;
     --key: #444861;
@@ -165,23 +165,21 @@
   }
   #toast.show { opacity: 1; }
 
-  #keyboard { width: 100%; display: flex; flex-direction: column; gap: 6px; padding-bottom: 10px; }
-  .krow { display: flex; justify-content: center; gap: 5px; }
-  .key {
-    flex: 1;
-    max-width: 44px;
-    height: 50px;
+  /* invisible input that summons the device's native keyboard;
+     16px font stops iOS from zooming in on focus */
+  #kbform { position: fixed; bottom: 0; left: 0; }
+  #kb {
+    width: 2px;
+    height: 2px;
     border: none;
-    border-radius: 6px;
-    background: var(--key);
-    color: var(--text);
-    font-size: .95rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    cursor: pointer;
+    padding: 0;
+    background: transparent;
+    color: transparent;
+    caret-color: transparent;
+    font-size: 16px;
+    opacity: .02;
+    pointer-events: none;
   }
-  .key:active { transform: scale(.94); }
-  .key.wide { max-width: 68px; flex: 1.6; font-size: .7rem; }
 
   #overlay, #help {
     position: fixed;
@@ -229,6 +227,8 @@
   .mini { display: flex; gap: 4px; }
   .mini .tile { width: 28px; height: 28px; font-size: .95rem; border-radius: 5px; flex: none; }
   .help-rules { font-size: .8rem !important; line-height: 1.7; margin: 0 0 16px !important; }
+  .help-steps { font-size: .82rem; line-height: 1.8; margin: 0 0 14px 20px; color: var(--muted); }
+  .help-steps b { color: var(--text); }
   .help-rules b { color: var(--text); }
 
   .confetti {
@@ -259,14 +259,18 @@
     <button class="tab active" data-mode="daily">DAILY</button>
     <button class="tab" data-mode="endless">ENDLESS</button>
   </div>
-  <p id="hint">turn the top word into the goal — one letter per rung</p>
+  <p id="hint">tap a letter · type a swap · return locks the rung</p>
   <div id="puzzle"></div>
   <div id="meta">
     <button id="undo">↩ UNDO RUNG</button>
     <span id="rungs"></span>
   </div>
-  <div id="keyboard"></div>
 </main>
+
+<form id="kbform" autocomplete="off">
+  <input id="kb" type="text" autocomplete="off" autocapitalize="none" autocorrect="off"
+         spellcheck="false" enterkeyhint="go" aria-label="type a letter">
+</form>
 
 <div id="toast"></div>
 
@@ -285,7 +289,13 @@
 <div id="help">
   <div class="card help-card">
     <h2>HOW TO BLURT</h2>
-    <p class="help-goal">Climb from the top word to the <b>goal word</b>,<br>changing <b>one letter</b> per rung.</p>
+    <p class="help-goal">Turn the <b>top word</b> into the <b>goal word</b><br>by climbing one rung at a time.</p>
+    <ol class="help-steps">
+      <li><b>Tap a letter</b> in the bottom word</li>
+      <li><b>Type</b> a new letter to swap it in</li>
+      <li>Hit <b>return ↵</b> — if it spells a real word, the rung locks in</li>
+    </ol>
+    <p class="help-goal" style="margin-bottom:8px">Repeat until you reach the goal:</p>
     <div class="lad">
       <div class="mini"><span class="tile">c</span><span class="tile">o</span><span class="tile">l</span><span class="tile">d</span></div>
       <div class="mini"><span class="tile">c</span><span class="tile">o</span><span class="tile changed">r</span><span class="tile">d</span></div>
@@ -294,9 +304,7 @@
       <div class="mini"><span class="tile lock">w</span><span class="tile lock">a</span><span class="tile lock">r</span><span class="tile changed">m</span></div>
     </div>
     <p class="help-rules">
-      <b>Tap a tile</b>, type a letter to swap it.<br>
-      Every rung must be a <b>real word</b>.<br>
-      <span style="color:var(--lock)">■</span> letters already match the goal.<br>
+      <span style="color:var(--lock)">■</span> <b>Green</b> letters already match the goal.<br>
       Fewer rungs = bigger flex. Match the <b>perfect climb</b> — or beat it with a rare word.
     </p>
     <div class="btnrow"><button id="help-btn-close">LET ME CLIMB</button></div>
@@ -332,7 +340,6 @@
   const MAXSHARE = 12;
 
   const puzzleEl = document.getElementById("puzzle");
-  const keyboard = document.getElementById("keyboard");
   const toast = document.getElementById("toast");
   const overlay = document.getElementById("overlay");
   const help = document.getElementById("help");
@@ -456,8 +463,9 @@
         t.className = "tile";
         t.textContent = cur[i];
         if (i === sel) t.classList.add("sel");
-        if (cur[i] !== prev[i]) t.classList.add("pending");
-        t.addEventListener("click", () => { sel = i; render(); });
+        if (cur[i] === puzzle.target[i]) t.classList.add("lock");
+        else if (cur[i] !== prev[i]) t.classList.add("pending");
+        t.addEventListener("click", () => { sel = i; render(); focusKb(); });
         row.appendChild(t);
       }
       puzzleEl.appendChild(row);
@@ -477,22 +485,28 @@
     return -1;
   }
 
-  function buildKeyboard() {
-    keyboard.innerHTML = "";
-    ["qwertyuiop", "asdfghjkl", "+zxcvbnm-"].forEach(rowStr => {
-      const krow = document.createElement("div");
-      krow.className = "krow";
-      for (const ch of rowStr) {
-        const key = document.createElement("button");
-        if (ch === "+") { key.textContent = "ENTER"; key.dataset.key = "enter"; key.className = "key wide"; }
-        else if (ch === "-") { key.textContent = "⌫"; key.dataset.key = "back"; key.className = "key wide"; }
-        else { key.textContent = ch; key.dataset.key = ch; key.className = "key"; }
-        key.addEventListener("click", () => press(key.dataset.key));
-        krow.appendChild(key);
-      }
-      keyboard.appendChild(krow);
-    });
-  }
+  // Native keyboard: an invisible input holds a sentinel character so both
+  // letters and backspace are detectable from input events on any mobile IME.
+  const kb = document.getElementById("kb");
+  const SENT = "•";
+  function armKb() { kb.value = SENT; }
+  function focusKb() { kb.focus({ preventScroll: true }); armKb(); }
+  kb.addEventListener("input", () => {
+    const v = kb.value;
+    if (v.length > SENT.length) {
+      const ch = v[v.length - 1].toLowerCase();
+      if (/^[a-z]$/.test(ch)) press(ch);
+    } else if (v.length < SENT.length) {
+      press("back");
+    }
+    armKb();
+  });
+  document.getElementById("kbform").addEventListener("submit", e => {
+    e.preventDefault();
+    if (help.classList.contains("show")) return toggleHelp(false);
+    if (overlay.classList.contains("show")) return document.getElementById("ov-btn").click();
+    press("enter");
+  });
 
   let toastTimer;
   function showToast(msg, ms = 1300) {
@@ -622,7 +636,7 @@
       const w = ladder[n];
       const ci = diffIdx(ladder[n - 1], w);
       let row = "";
-      for (let i = 0; i < L; i++) row += w[i] === puzzle.target[i] ? "🟦" : (i === ci ? "🟪" : "⬜");
+      for (let i = 0; i < L; i++) row += w[i] === puzzle.target[i] ? "🟩" : (i === ci ? "🟪" : "⬜");
       lines.push(row);
     }
     if (rungs > MAXSHARE) lines.push("…it was a journey.");
@@ -656,7 +670,7 @@
   }
 
   function confetti() {
-    const colors = ["#ff5d8f", "#15a89b", "#8e5bff", "#4f9cff", "#ffd166"];
+    const colors = ["#ff5d8f", "#27b364", "#8e5bff", "#4f9cff", "#ffd166"];
     for (let i = 0; i < 60; i++) {
       const c = document.createElement("div");
       c.className = "confetti";
@@ -678,16 +692,17 @@
   document.querySelectorAll(".tab").forEach(t =>
     t.addEventListener("click", () => { if (t.dataset.mode !== mode) setMode(t.dataset.mode); }));
 
-  document.getElementById("undo").addEventListener("click", undo);
+  document.getElementById("undo").addEventListener("click", () => { undo(); focusKb(); });
   document.getElementById("ov-share").addEventListener("click", share);
   document.getElementById("ov-btn").addEventListener("click", () => {
     if (mode === "daily") setMode("endless");
     else newRound();
+    focusKb();
   });
 
   function toggleHelp(show) { help.classList.toggle("show", show); }
   document.getElementById("help-btn").addEventListener("click", () => toggleHelp(true));
-  document.getElementById("help-btn-close").addEventListener("click", () => toggleHelp(false));
+  document.getElementById("help-btn-close").addEventListener("click", () => { toggleHelp(false); focusKb(); });
   help.addEventListener("click", e => { if (e.target === help) toggleHelp(false); });
   try {
     if (!localStorage.getItem("blurt-helped2")) {
@@ -705,16 +720,17 @@
       if (e.key === "Enter") document.getElementById("ov-btn").click();
       return;
     }
+    if (e.key === "ArrowLeft") { sel = (sel + L - 1) % L; render(); return; }
+    if (e.key === "ArrowRight") { sel = (sel + 1) % L; render(); return; }
+    if (e.target === kb) return; // the input's own handlers cover these
     if (e.key === "Enter") press("enter");
     else if (e.key === "Backspace") press("back");
-    else if (e.key === "ArrowLeft") { sel = (sel + L - 1) % L; render(); }
-    else if (e.key === "ArrowRight") { sel = (sel + 1) % L; render(); }
     else if (/^[a-zA-Z]$/.test(e.key)) press(e.key.toLowerCase());
   });
 
-  buildKeyboard();
   saveStats();
   newRound();
+  focusKb();
 })();
 </script>
 </body>
